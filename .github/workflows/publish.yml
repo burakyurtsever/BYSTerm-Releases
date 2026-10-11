@@ -1,0 +1,44 @@
+name: Publish release
+
+# Yeni surum: "incoming" dalina incoming/VERSION, incoming/NOTES.md ve incoming/files/* gonderilir;
+# bu is akisi o dosyalarla bir Release olusturur ve "incoming" dalini siler (main'de ikili dosya kalmaz).
+on:
+  push:
+    branches: [incoming]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: incoming
+          fetch-depth: 0
+      - name: Read version
+        id: v
+        run: |
+          v=$(tr -d '[:space:]' < incoming/VERSION)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          ls -la incoming/files
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.v.outputs.version }}
+          name: BYSTerm v${{ steps.v.outputs.version }}
+          target_commitish: main
+          body_path: incoming/NOTES.md
+          files: incoming/files/*
+          make_latest: true
+      - name: Keep every release tag on main (no other history in this repo)
+        run: |
+          git fetch --tags --force origin main
+          for t in $(git tag -l 'v*'); do
+            if ! git merge-base --is-ancestor "$t" origin/main; then
+              git tag -f "$t" origin/main
+              git push -f origin "refs/tags/$t"
+            fi
+          done
+      - name: Remove incoming branch
+        run: git push origin --delete incoming
